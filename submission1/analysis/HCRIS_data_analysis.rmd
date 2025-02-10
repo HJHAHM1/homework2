@@ -1,3 +1,88 @@
 ```{r}
+full.hcris.data <- readRDS('data/output/HCRIS_Data.rds')
+```
 
+```{r}
+# Question 1
+# Filter data to include only hospitals in the 'weighted_average' category
+full.hcris.data <- full.hcris.data %>%
+  filter(source == "weighted_average") %>%
+  group_by(year) %>%
+  summarise(num_hospitals = n_distinct(provider_number))  # Count distinct hospitals
+
+# Plot the count of hospitals in the 'weighted_average' category over years
+ggplot(full.hcris.data, aes(x = year, y = num_hospitals)) +
+  geom_line(color = "blue") +  # Line plot for trends
+  geom_point(color = "red") +  # Points to highlight each year
+  labs(title = "Number of Hospitals With More than One Report per Year Over Time",
+       x = "Fiscal Year",
+       y = "Number of Hospitals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Question 2
+num_unique_providers <- full.hcris.data %>%
+  ungroup() %>% 
+  summarise(unique_providers = n_distinct(provider_number))
+
+print(num_unique_providers)
+```
+
+```{r}
+ # Question 3
+ # Ensure your data is clean and there are no missing values in tot_charges or year
+final_data_clean <- full.hcris.data %>%
+  filter(!is.na(tot_charges))  
+
+# Create the violin plot
+ggplot(final_data_clean, aes(x = year, y = tot_charges)) +
+  geom_violin(trim = FALSE, fill = "lightblue", color = "black") 
+  labs(title = "Distribution of Total Charges by Year",
+       x = "Year",
+       y = "Total Charges") +
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+## Question 4
+## Create new column for price 
+# Calculate the discount factor
+full.hcris.data$discount_factor <- 1 - (full.hcris.data$tot_discounts / full.hcris.data$tot_charges)
+
+# Calculate the price numerator
+full.hcris.data$price_num <- (full.hcris.data$ip_charges + full.hcris.data$icu_charges + full.hcris.data$ancillary_charges) * full.hcris.data$discount_factor - full.hcris.data$tot_mcare_payment
+
+# Calculate the price denominator
+full.hcris.data$price_denom <- full.hcris.data$tot_discharges - full.hcris.data$mcare_discharges
+
+# Calculate the final price
+full.hcris.data$price <- full.hcris.data$price_num / full.hcris.data$price_denom
+```
+
+```{r price_violinplot}
+# Step 1: Remove or handle negative prices
+full.hcris.data <- full.hcris.data %>%
+  filter(price >= 0)  
+
+# Handle outliers using interquartile range
+# Calculate IQR and filter out outliers beyond 1.5*IQR range
+Q1 <- quantile(full.hcris.data$price, 0.25)
+Q3 <- quantile(full.hcris.data$price, 0.75)
+IQR <- Q3 - Q1
+
+# Filter data to remove outliers
+full.hcris.data_filtered <- full.hcris.data %>%
+  filter(price >= (Q1 - 1.5 * IQR) & price <= (Q3 + 1.5 * IQR))
+
+# Create a violin plot for price distribution by year
+ggplot(full.hcris.data_filtered, aes(x = year, y = price)) +
+  geom_violin(fill = "lightblue", color = "darkblue") +
+  theme_minimal() +
+  labs(title = "Distribution of Estimated Prices by Year",
+       x = "Year",
+       y = "Price") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
