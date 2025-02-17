@@ -1,0 +1,150 @@
+---
+title: "Homework 2"
+subtitle: "Research Methods, Spring 2025"
+author: Justin Hahm
+format:
+  pdf:
+    output-file: "hahm-j-hwk2-1"
+    output-ext: "pdf"
+    header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+```{r}
+#| include: false
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, readr, readxl, hrbrthemes, fixest,
+               scales, gganimate, gapminder, gifski, png, tufte, plotly, OECD,
+               ggrepel, survey, foreign, devtools, pdftools, kableExtra, modelsummary,
+               kableExtra)
+```
+
+
+
+```{r}
+#| include: false
+#| eval: true
+ 
+load("C:/Users/hjust/OneDrive/Documents/GitHub/homework2/submission1/Hwk2_workspace.Rdata")
+```
+
+
+My answers to the homework questions are described below. Note that I do the analysis for these answers in a separate `R` script. My analysis file is available in the analysis folder. The GitHub repository for this work is available [here](https://github.com/HJHAHM1/homework2.git). Enjoy!
+
+
+\newpage
+# Summarize the Data
+\noindent 1. How many hospitals filed more than one report in the same year? Show your answer as a line graph of the number of hospitals over time. <br>
+
+```{r} 
+#| echo: false
+#| label: plt-mult
+
+ggplot(full.hcris.data.multiple, aes(x = year, y = num_hospitals)) +
+  geom_line(color = "blue") +  # Line plot for trends
+  geom_point(color = "red") +  # Points to highlight each year
+  labs(title = "Number of Hospitals With More than One Report per Year",
+       x = "Fiscal Year",
+       y = "Number of Hospitals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+\newpage
+\noindent 2. After removing/combining multiple reports, how many unique hospital IDs (Medicare provider numbers) exist in the data?
+```{r}
+#| echo: false
+#| label: tbl-mult
+#| tbl-cap: Unique hospitals with multiple reports
+
+options(knitr.kable.NA = 0)
+knitr::kable(num_unique_providers, digits=0)
+
+```
+
+\newpage
+\noindent 3. What is the distribution of total charges (tot_charges in the data) in each year? Show your results with a “violin” plot, with charges on the y-axis and years on the x-axis.
+```{r}
+#| echo: false
+ggplot(final_data_clean, aes(x = factor(year), y = tot_charges)) +
+  geom_violin(trim = FALSE, fill = "lightblue", color = "darkblue") +
+  labs(title = "Distribution of Total Charges by Year",
+       x = "Year",
+       y = "Total Charges") +
+  theme_minimal() +  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8), 
+    axis.text.y = element_text(size = 8), 
+    axis.title.x = element_text(size = 10), 
+    axis.title.y = element_text(size = 10),  
+    plot.title = element_text(size = 12) 
+  )
+
+```
+
+\newpage
+\noindent 4. What is the distribution of estimated prices in each year? Again present your results with a violin plot, and recall our formula for estimating prices from class. Be sure to do something about outliers and/or negative prices in the data.
+```{r}
+#| echo: false
+ggplot(full.hcris.data_filtered, aes(x = factor(year), y = price)) +
+  geom_violin(fill = "lightblue", color = "darkblue") +
+  theme_minimal() +
+  labs(title = "Distribution of Estimated Prices by Year",
+       x = "Year",
+       y = "Price") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+\newpage
+# Estimate ATEs
+
+\noindent 5. Calculate the average price among penalized versus non-penalized hospitals.
+```{r}
+#| echo: false
+#| label: tbl-pen
+#| tbl-cap: Average price among penalized vs non-penalized hospitals
+options(knitr.kable.NA = 0)
+knitr::kable(mean_values, digits=0)
+```
+
+\newpage
+\noindent 6. Split hospitals into quartiles based on bed size. To do this, create 4 new indicator variables, where each variable is set to 1 if the hospital’s bed size falls into the relevant quartile. Provide a table of the average price among treated/control groups for each quartile.
+```{r}
+#| echo: false
+#| label: tbl-quart
+#| tbl-cap: Quartiles by bed size in 2012
+
+options(knitr.kable.NA = 0)
+knitr::kable(summary_table, digits=0,
+             col.names=c("Quartile","Nonpenalty","Penalty"),
+             format.args=list(big.mark=","), booktabs = TRUE)
+```
+
+\newpage
+\noindent 7. Find the average treatment effect using each of the following estimators, and present your results in a single table:
+```{r}
+#| echo: false
+#| label: tbl-ate
+#| tbl-cap: ATE 
+
+options(knitr.kable.NA = 0)
+knitr::kable(ate_summary, digits=2,
+             col.names=c("Method","ATE"),
+             format.args=list(big.mark=","), booktabs = TRUE)
+```
+
+\newpage
+\noindent 8. With these different treatment effect estimators, are the results similar, identical, very different?
+
+\indent The results from the different treatment effect estimators are identical. 
+
+\noindent 9. Do you think you’ve estimated a causal effect of the penalty? Why or why not? (just a couple of sentences)
+
+\indent I believe I have estimated a causal effect of the penalty becuase I see convergence across different methods. This indicates consistency. The selection on observables assumption should be satisfied. 
+
+\noindent 10. Briefly describe your experience working with these data (just a few sentences). Tell me one thing you learned and one thing that really aggravated or surprised you.
+
+\indent It was difficult to keep track of the different variable names and the dfs after filtering. While working with this dataset, I realized the importance of being organized and working through my code sequentially. The values would change if I ran the code again out of order while debugging, which became frustrating.

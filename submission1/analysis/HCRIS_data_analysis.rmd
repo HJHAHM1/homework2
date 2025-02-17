@@ -1,17 +1,22 @@
 ```{r}
+# Preliminaries -----------------------------------------------------------
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, Matching, cobalt)
+```
+```{r}
 full.hcris.data <- readRDS('data/output/HCRIS_Data.rds')
 ```
 
 ```{r}
 # Question 1
 # Filter data to include only hospitals in the 'weighted_average' category
-full.hcris.data <- full.hcris.data %>%
+full.hcris.data_multiple <- full.hcris.data %>%
   filter(source == "weighted_average") %>%
   group_by(year) %>%
   summarise(num_hospitals = n_distinct(provider_number))  # Count distinct hospitals
 
 # Plot the count of hospitals in the 'weighted_average' category over years
-ggplot(full.hcris.data, aes(x = year, y = num_hospitals)) +
+ggplot(full.hcris.data_multiple, aes(x = year, y = num_hospitals)) +
   geom_line(color = "blue") +  # Line plot for trends
   geom_point(color = "red") +  # Points to highlight each year
   labs(title = "Number of Hospitals With More than One Report per Year Over Time",
@@ -37,7 +42,7 @@ final_data_clean <- full.hcris.data %>%
   filter(!is.na(tot_charges))  
 
 # Create the violin plot
-ggplot(final_data_clean, aes(x = year, y = tot_charges)) +
+ggplot(final_data_clean, aes(x = factor(year), y = tot_charges)) +
   geom_violin(trim = FALSE, fill = "lightblue", color = "black") 
   labs(title = "Distribution of Total Charges by Year",
        x = "Year",
@@ -78,11 +83,214 @@ full.hcris.data_filtered <- full.hcris.data %>%
   filter(price >= (Q1 - 1.5 * IQR) & price <= (Q3 + 1.5 * IQR))
 
 # Create a violin plot for price distribution by year
-ggplot(full.hcris.data_filtered, aes(x = year, y = price)) +
+ggplot(full.hcris.data_filtered, aes(x = factor(year), y = price)) +
   geom_violin(fill = "lightblue", color = "darkblue") +
   theme_minimal() +
   labs(title = "Distribution of Estimated Prices by Year",
        x = "Year",
        y = "Price") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Question 5 
+# Remove outiers and focus on year 2012
+final.hcris <- full.hcris.data %>% ungroup() %>%
+  filter(price_denom>100, !is.na(price_denom), 
+         price_num>0, !is.na(price_num),
+         price<100000, 
+         beds>30, year==2012) %>%  #<<
+  mutate( hvbp_payment = ifelse(is.na(hvbp_payment),0,hvbp_payment),
+          hrrp_payment = ifelse(is.na(hrrp_payment),0,abs(hrrp_payment)), #<<
+    penalty = (hvbp_payment-hrrp_payment<0)) #<<
+
+# Mean penalty plots
+mean.pen <- round(mean(final.hcris$price[which(final.hcris$penalty==1)]),2)
+mean.nopen <- round(mean(final.hcris$price[which(final.hcris$penalty==0)]),2)
+
+```
+
+```{r}
+# Question 6
+# Create a 'quartile' variable based on the 'beds' variable
+final.hcris <- final.hcris %>%
+  mutate(quartile = ntile(beds, 4))  # Create quartiles based on 'beds'
+
+# Create indicator variables for each quartile
+final.hcris <- final.hcris %>%
+  mutate(
+    Q1 = ifelse(quartile == 1, 1, 0),
+    Q2 = ifelse(quartile == 2, 1, 0),
+    Q3 = ifelse(quartile == 3, 1, 0),
+    Q4 = ifelse(quartile == 4, 1, 0)
+  )
+
+# Calculate the average price
+# I use group_by and summarise to compute the mean price for each quartile and treatment group
+
+summary_table <- final.hcris %>%
+  group_by(quartile, penalty) %>%
+  summarise(avg_price = mean(price, na.rm = TRUE)) %>%
+  pivot_wider(names_from = penalty, values_from = avg_price) %>%
+  ungroup() %>%
+  rename(
+    penalty = `TRUE`,        
+    nonpenalty = `FALSE`    
+  )
+
+# Print the result
+print(summary_table)
+```
+
+```{r}
+# Subset data
+lp.vars <- final.hcris %>% 
+  dplyr::select(Q1, Q2, Q3, Q4, penalty, price) %>%
+  filter(complete.cases(.))
+lp.covs <- lp.vars %>% dplyr::select(-c("penalty","price"))
+
+# Inverse Variance single matching
+m.nn.var2 <- Matching::Match(Y=lp.vars$price,
+                             Tr=lp.vars$penalty,
+                             X=lp.covs,
+                             M=1,   #<<
+                             Weight=1,
+                             estimand="ATE")
+
+v.name=data.frame(new=c("Q1", "Q2", "Q3", "Q4"))
+
+love.plot(bal.tab(m.nn.var2, covs = lp.covs, treat = lp.vars$penalty), 
+          threshold=0.1, 
+          var.names=v.name,
+          grid=FALSE, sample.names=c("Unmatched", "Matched"),
+          position="top", shapes=c("circle","triangle"),
+          colors=c("black","blue")) + 
+  theme_bw()
+```
+
+```{r}
+# Checking results from iverse variance matching
+# Extract relevant statistics from the matching result object 'm.nn.var2'
+estimate <- m.nn.var2$est          # Estimate of the Average Treatment Effect (ATE)
+ai_se <- m.nn.var2$se              # Adjusted standard error
+t_stat <- estimate / ai_se         # T-statistic
+
+# Since p.value doesn't seem to be directly available in the structure, 
+# you can either compute it manually or leave it out. 
+# Assuming you want to leave it out for now.
+
+# Observation counts from the `m.nn.var2` structure
+original_obs <- m.nn.var2$orig.nobs          # Original number of observations
+treated_obs <- m.nn.var2$orig.treated.nobs  # Original number of treated observations
+matched_obs <- m.nn.var2$nobs               # Matched number of observations
+matched_unweighted <- m.nn.var2$wnobs       # Matched unweighted number of observations
+
+# Create the summary table
+summary_table_1 <- data.frame(
+  "Estimate" = estimate,
+  "AI SE" = ai_se,
+  "T-stat" = t_stat,
+  "Original number of observations" = original_obs,
+  "Original number of treated observations" = treated_obs,
+  "Matched number of observations" = matched_obs,
+  "Matched number of observations (unweighted)" = matched_unweighted
+)
+
+# Print the summary table
+print(summary_table_1)
+
+
+```
+
+```{r}
+# Mahalanobis matching method
+m.nn.md <- Matching::Match(Y=lp.vars$price,
+                           Tr=lp.vars$penalty,
+                           X=lp.covs,
+                           M=1,
+                           Weight=2,
+                           estimand="ATE") 
+
+love.plot(bal.tab(m.nn.md, covs = lp.covs, treat = lp.vars$penalty), 
+          threshold=0.1, 
+          var.names=v.name,
+          grid=FALSE, sample.names=c("Unmatched", "Matched"),
+          position="top", shapes=c("circle","triangle"),
+          colors=c("black","blue")) + 
+  theme_bw()
+```
+
+```{r}
+# Propensity score matching
+logit.model <- glm(penalty ~ Q1 + Q2 + Q3 + Q4, family=binomial, data=lp.vars)
+ps <- fitted(logit.model)
+m.nn.ps <- Matching::Match(Y=lp.vars$price,
+                           Tr=lp.vars$penalty,
+                           X=ps,
+                           M=1,
+                           estimand="ATE")
+
+love.plot(bal.tab(m.nn.ps, covs = lp.covs, treat = lp.vars$penalty), 
+          threshold=0.1, 
+          var.names=v.name,
+          grid=FALSE, sample.names=c("Unmatched", "Matched"),
+          position="top", shapes=c("circle","triangle"),
+          colors=c("black","blue")) + 
+  theme_bw()
+```
+
+```{r}
+lp.vars <- lp.vars %>%
+  mutate(ipw = case_when(
+    penalty==1 ~ 1/ps,
+    penalty==0 ~ 1/(1-ps),
+    TRUE ~ NA_real_
+  ))
+mean.t1 <- lp.vars %>% filter(penalty==1) %>%
+  dplyr::select(price, ipw) %>% summarize(mean_p=weighted.mean(price,w=ipw))
+mean.t0 <- lp.vars %>% filter(penalty==0) %>%
+  dplyr::select(price, ipw) %>% summarize(mean_p=weighted.mean(price,w=ipw))
+mean.t1$mean_p - mean.t0$mean_p
+```
+
+```{r}
+reg1.dat <- lp.vars %>% filter(penalty==1, complete.cases(.))
+reg1 <- lm(price ~ Q1 + Q2 + Q3 + Q4, data=reg1.dat)
+
+reg0.dat <- lp.vars %>% filter(penalty==0, complete.cases(.))
+reg0 <- lm(price ~ Q1 + Q2 + Q3 + Q4, data=reg0.dat)
+pred1 <- predict(reg1,new=lp.vars)
+pred0 <- predict(reg0,new=lp.vars)
+mean(pred1-pred0)
+```
+
+```{r}
+# Extract ATE estimates from each method
+
+# 1. Inverse Variance Matching ATE
+ate_ivm <- m.nn.var2$est
+
+# 2. Mahalanobis Matching ATE
+ate_mm <- m.nn.md$est
+
+# 3. Propensity Score Matching ATE
+ate_psm <- m.nn.ps$est
+
+# 4. Regression Adjustment with Inverse Probability Weights ATE
+ate_ipw <- mean.t1$mean_p - mean.t0$mean_p
+
+# 5. Regression Adjustment for penalty==1 and penalty==0
+ate_regression <- mean(pred1 - pred0)
+
+# Create a summary table
+ate_summary <- data.frame(
+  Method = c("Inverse Variance Matching", "Mahalanobis Matching", 
+             "Propensity Score Matching", "IPW", 
+             "Regression Adjustment (Penalty=1 vs Penalty=0)"),
+  ATE = c(ate_ivm, ate_mm, ate_psm, ate_ipw, ate_regression)
+)
+
+# Print the summary table
+print(ate_summary)
+
 ```
