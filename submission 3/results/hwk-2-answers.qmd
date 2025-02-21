@@ -1,0 +1,134 @@
+---
+title: "Homework 2"
+subtitle: "Research Methods, Spring 2025"
+author: Justin Hahm
+format:
+  pdf:
+    output-file: "hahm-j-hwk2-3"
+    output-ext: "pdf"
+    header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+```{r}
+#| include: false
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, readr, readxl, hrbrthemes, fixest,
+               scales, gganimate, gapminder, gifski, png, tufte, plotly, OECD,
+               ggrepel, survey, foreign, devtools, pdftools, kableExtra, modelsummary,
+               kableExtra)
+```
+
+
+
+```{r}
+#| include: false
+#| eval: true
+ 
+load("C:/Users/hjust/OneDrive/Documents/GitHub/homework2/submission1/Hwk2_workspace.Rdata")
+```
+
+
+My answers to the homework questions are described below. Note that I do the analysis for these answers in a separate `R` script. My analysis file is available in the analysis folder. The GitHub repository for this work is available [here](https://github.com/HJHAHM1/homework2.git). Enjoy!
+
+
+\newpage
+# Summarize the Data
+\noindent 1. How many hospitals filed more than one report in the same year? Show your answer as a line graph of the number of hospitals over time. <br>
+
+The graph was compiled from a pre-filtered version of the data set. I included all years available from 1997. The duplicate reports over years are illustrated in @fig-dup. 
+
+```{r} 
+#| echo: false
+#| label: fig-dup
+#| fig-cap: Duplicate over years starting from 1997
+
+fig.dup
+
+```
+
+\newpage
+\noindent 2. After removing/combining multiple reports, how many unique hospital IDs (Medicare provider numbers) exist in the data?
+
+After filtering, I was able to include data starting from 1997. See @fig-unq.
+```{r}
+#| echo: false
+#| label: fig-unq
+#| fig-cap: Unique hospital IDs starting from 1997
+
+fig.unique
+
+```
+
+\newpage
+\noindent 3. What is the distribution of total charges (tot_charges in the data) in each year? Show your results with a “violin” plot, with charges on the y-axis and years on the x-axis. 
+
+I filtered for the interquartile range to remove outliers in the data. I then performed a log transformation on the total charges. See @fig-cha.
+```{r}
+#| echo: false
+#| label: fig-cha
+#| fig-cap: Total charges over years starting from 1997
+
+fig.charges
+
+```
+
+\newpage
+\noindent 4. What is the distribution of estimated prices in each year? Again present your results with a violin plot, and recall our formula for estimating prices from class. Be sure to do something about outliers and/or negative prices in the data.
+
+See @fig-pri.
+```{r}
+#| echo: false
+#| label: fig-pri
+#| fig-cap: Prices over years starting from 1997
+
+fig.prices
+```
+
+
+\newpage
+# Estimate ATEs
+
+\noindent 5. Calculate the average price among penalized versus non-penalized hospitals.
+
+The average price among non-penalized hospitals in 2012 is `r format(as.numeric(mean_values[1,2]), big.mark=",")` and the average price among penalized hospitals is `r format(as.numeric(mean_values[2,2]), big.mark=",")`.
+
+\noindent 6. Split hospitals into quartiles based on bed size. To do this, create 4 new indicator variables, where each variable is set to 1 if the hospital’s bed size falls into the relevant quartile. Provide a table of the average price among treated/control groups for each quartile. See @tbl-quart.
+```{r}
+#| echo: false
+#| label: tbl-quart
+#| tbl-cap: Quartiles by bed size in 2012
+
+options(knitr.kable.NA = 0)
+knitr::kable(summary_table, digits=0,
+             col.names=c("Quartile","Nonpenalty","Penalty"),
+             format.args=list(big.mark=","), booktabs = TRUE)
+```
+
+\newpage
+\noindent 7. Find the average treatment effect using each of the following estimators, and present your results in a single table: See @tbl-ate.
+```{r}
+#| echo: false
+#| label: tbl-ate
+#| tbl-cap: ATE 
+
+options(knitr.kable.NA = 0)
+knitr::kable(ate_summary, digits=2,
+             col.names=c("Method","ATE"),
+             format.args=list(big.mark=","), booktabs = TRUE)
+```
+
+\newpage
+\noindent 8. With these different treatment effect estimators, are the results similar, identical, very different?
+
+\indent The results from the different treatment effect estimators are identical. 
+
+\noindent 9. Do you think you’ve estimated a causal effect of the penalty? Why or why not? (just a couple of sentences)
+
+\indent I believe I have estimated a causal effect of the penalty becuase I see convergence across different methods. This indicates consistency. The selection on observables assumption should be satisfied by matching within the quartiles.
+
+\noindent 10. Briefly describe your experience working with these data (just a few sentences). Tell me one thing you learned and one thing that really aggravated or surprised you.
+
+\indent It was difficult to keep track of the different variable names and the dfs after filtering. While working with this dataset, I realized the importance of being organized and working through my code sequentially. The values would change if I ran the code out of order while debugging, which quickly became frustrating.
